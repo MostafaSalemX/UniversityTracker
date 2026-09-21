@@ -68,3 +68,7 @@ frequently delayed 10–30+ minutes under load.
 - `unitracker/checker.py` – pure diff against `state.json`, produces alerts
 - `unitracker/formatting.py` – Telegram HTML rendering
 - `unitracker/__main__.py` – entry point, failure alerts, `--dry-run`
+
+## What next
+
+Planned v2 (live sessions, submission-aware reminders, notifications, 10-minute cadence) and the full list of further ideas live in [`docs/ROADMAP.md`](docs/ROADMAP.md).
