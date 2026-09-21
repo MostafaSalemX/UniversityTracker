@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import sys
 import time
@@ -14,6 +15,8 @@ from .moodle import MoodleClient
 from .snapshot import build_snapshot
 from .telegram import TelegramError, send_message
 
+SEND_INTERVAL = 1.0  # seconds between consecutive messages
+
 
 def _try_send(sender, token: str, chat_id: str, text: str) -> None:
     try:
@@ -22,12 +25,23 @@ def _try_send(sender, token: str, chat_id: str, text: str) -> None:
         print(f"telegram send failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
-def run(argv=None, *, env=None, now=None, client_factory=None, sender=None) -> int:
+def _utf8_console() -> None:
+    """Windows consoles default to a legacy code page; emoji would crash print()."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, io.UnsupportedOperation):
+            pass
+
+
+def run(argv=None, *, env=None, now=None, client_factory=None, sender=None, sleep=None) -> int:
+    _utf8_console()
     parser = argparse.ArgumentParser(prog="unitracker")
     parser.add_argument("--dry-run", action="store_true", help="print alerts instead of sending; don't save state")
     args = parser.parse_args(argv)
     client_factory = client_factory if client_factory is not None else MoodleClient
     sender = sender if sender is not None else send_message
+    sleep = sleep if sleep is not None else time.sleep
 
     try:
         settings = config.load(env)
@@ -76,7 +90,9 @@ def run(argv=None, *, env=None, now=None, client_factory=None, sender=None) -> i
         return 0
 
     try:
-        for text in messages:
+        for i, text in enumerate(messages):
+            if i:
+                sleep(SEND_INTERVAL)  # stay under Telegram's per-chat rate limit
             sender(settings.telegram_bot_token, settings.telegram_chat_id, text)
     except TelegramError as exc:
         print(f"telegram send failed: {exc}", file=sys.stderr)
