@@ -25,6 +25,13 @@ def test_load_optional_overrides():
     assert s.tz_name == "UTC"
 
 
+def test_whitespace_only_optionals_fall_back_to_defaults():
+    s = config.load({**FULL, "STATE_PATH": "   ", "TZ_NAME": "	"})
+    assert s.state_path == "./state.json"
+    assert s.tz_name == "Africa/Cairo"
+    assert config.load({**FULL, "TZ_NAME": " UTC "}).tz_name == "UTC"
+
+
 def test_missing_vars_raise_with_names():
     env = {k: v for k, v in FULL.items() if k not in ("MOODLE_PASSWORD", "TELEGRAM_CHAT_ID")}
     with pytest.raises(config.ConfigError) as ei:

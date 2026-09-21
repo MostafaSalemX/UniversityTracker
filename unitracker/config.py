@@ -48,6 +48,6 @@ def load(env: Mapping[str, str] | None = None) -> Settings:
         moodle_password=values["MOODLE_PASSWORD"],
         telegram_bot_token=values["TELEGRAM_BOT_TOKEN"],
         telegram_chat_id=values["TELEGRAM_CHAT_ID"],
-        state_path=(env.get("STATE_PATH") or "./state.json").strip(),
-        tz_name=(env.get("TZ_NAME") or "Africa/Cairo").strip(),
+        state_path=(env.get("STATE_PATH") or "").strip() or "./state.json",
+        tz_name=(env.get("TZ_NAME") or "").strip() or "Africa/Cairo",
     )
