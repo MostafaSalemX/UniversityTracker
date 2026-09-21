@@ -23,6 +23,7 @@ class State:
     discussions: set[str] = field(default_factory=set)
     modules: set[str] = field(default_factory=set)
     grades: dict[str, str] = field(default_factory=dict)
+    course_errors: dict[str, str] = field(default_factory=dict)  # error key -> last message alerted
 
 
 def load(path: str) -> State:
@@ -39,6 +40,7 @@ def load(path: str) -> State:
         discussions=set(raw.get("discussions", [])),
         modules=set(raw.get("modules", [])),
         grades=dict(raw.get("grades", {})),
+        course_errors=dict(raw.get("course_errors", {})),
     )
 
 

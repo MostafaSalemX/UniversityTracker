@@ -57,7 +57,7 @@ class Snapshot:
     discussions: list[Discussion] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
     grades: list[Grade] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
+    errors: dict[str, str] = field(default_factory=dict)  # "forums" | "<shortname>/<part>" -> message
 
 
 def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
@@ -87,8 +87,9 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
             for f in client.news_forums(list(names)):
                 forums_by_course.setdefault(int(f["course"]), []).append(f)
         except MoodleError as exc:
-            snap.errors.append(f"forums: {exc}")
+            snap.errors["forums"] = f"forums: {exc}"
 
+    # Each per-course fetch is isolated so one failure doesn't hide the others.
     for course in snap.courses:
         try:
             for forum in forums_by_course.get(course.id, []):
@@ -103,6 +104,9 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
                             f"{client.base_url}/mod/forum/discuss.php?d={did}",
                         )
                     )
+        except MoodleError as exc:
+            snap.errors[f"{course.shortname}/discussions"] = f"{course.shortname} announcements: {exc}"
+        try:
             for section in client.course_contents(course.id):
                 for m in section.get("modules", []):
                     if m.get("uservisible") is False:
@@ -110,6 +114,9 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
                     snap.modules.append(
                         Module(int(m["id"]), course.shortname, m.get("name", ""), m.get("modname", ""), m.get("url") or "")
                     )
+        except MoodleError as exc:
+            snap.errors[f"{course.shortname}/contents"] = f"{course.shortname} contents: {exc}"
+        try:
             for g in client.grade_items(course.id, userid):
                 if g.get("itemtype") in ("course", "category"):
                     continue
@@ -124,6 +131,6 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
                     )
                 )
         except MoodleError as exc:
-            snap.errors.append(f"{course.shortname}: {exc}")
+            snap.errors[f"{course.shortname}/grades"] = f"{course.shortname} grades: {exc}"
 
     return snap

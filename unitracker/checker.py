@@ -32,7 +32,13 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
 
     if first:
         alerts.append(Alert(kind="live", count=len(snapshot.courses)))
-    alerts += [Alert(kind="course_error", body=msg) for msg in snapshot.errors]
+    # Per-course fetch errors: alert once per distinct message, not every run.
+    alerts += [
+        Alert(kind="course_error", body=msg)
+        for key, msg in snapshot.errors.items()
+        if s.course_errors.get(key) != msg
+    ]
+    s.course_errors = dict(snapshot.errors)
 
     # Courses. A course seen for the first time gets one "enrolled" alert; its
     # existing announcements/content/grades are seeded silently (like a first

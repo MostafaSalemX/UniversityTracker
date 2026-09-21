@@ -181,16 +181,35 @@ def test_grade_posted_and_changed():
 
 def test_course_errors_become_alerts_even_on_first_run():
     snap = base_snapshot()
-    snap.errors = ["M140: nopermissions: Sorry"]
-    alerts, _ = check(snap, State(), NOW)
-    assert alerts == [Alert(kind="live", count=1), Alert(kind="course_error", body="M140: nopermissions: Sorry")]
+    snap.errors = {"M140/grades": "M140 grades: nopermissions: Sorry"}
+    alerts, s = check(snap, State(), NOW)
+    assert alerts == [Alert(kind="live", count=1), Alert(kind="course_error", body="M140 grades: nopermissions: Sorry")]
+    assert s.course_errors == snap.errors
     alerts, _ = check(snap, seeded_state(), NOW)
-    assert alerts == [Alert(kind="course_error", body="M140: nopermissions: Sorry")]
+    assert alerts == [Alert(kind="course_error", body="M140 grades: nopermissions: Sorry")]
+
+
+def test_course_error_alerts_once_until_it_changes_or_clears():
+    snap = base_snapshot()
+    snap.errors = {"M140/grades": "M140 grades: nopermissions: Sorry"}
+    alerts, s = check(snap, seeded_state(), NOW)
+    assert kinds(alerts) == ["course_error"]
+    alerts, s = check(snap, s, NOW + 3600)  # same error again: silent
+    assert alerts == []
+    snap.errors = {"M140/grades": "M140 grades: timeout: gateway"}  # message changed: alert
+    alerts, s = check(snap, s, NOW + 7200)
+    assert [a.body for a in alerts] == ["M140 grades: timeout: gateway"]
+    snap.errors = {}  # cleared: silent, and forgotten
+    alerts, s = check(snap, s, NOW + 10800)
+    assert alerts == [] and s.course_errors == {}
+    snap.errors = {"M140/grades": "M140 grades: timeout: gateway"}  # reappears: alert again
+    alerts, s = check(snap, s, NOW + 14400)
+    assert kinds(alerts) == ["course_error"]
 
 
 def test_alert_ordering():
     snap = base_snapshot()
-    snap.errors = ["x"]
+    snap.errors = {"forums": "x"}
     snap.courses.append(Course(102, "M140", "Stats"))
     snap.events.append(Event(502, "Quiz 1 closes", "M140", NOW + 5 * 86400, ""))
     snap.discussions.append(Discussion(702, "M140", "Hi", "", ""))
