@@ -3,6 +3,7 @@ on:
   schedule:
     - cron: "0 4,10,17 * * *"
   workflow_dispatch:
+concurrency: moodle-check
 jobs:
   check:
     runs-on: ubuntu-latest

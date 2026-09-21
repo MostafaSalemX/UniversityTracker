@@ -43,6 +43,7 @@ Messages use Telegram HTML parse mode; all user-supplied text is HTML-escaped.
 |---|---|---|
 | 🎓 New course | Course id not in state | `Enrolled in <b>{fullname}</b>` |
 | 📌 New deadline | Calendar action event id not in state | `<b>{name}</b> ({course shortname}) due <b>{Thu 2 Oct, 23:59}</b>` + link |
+| 📌 Deadline changed | Known event whose `timesort` differs from state | `Deadline changed: <b>{name}</b> ({course}) due <b>…</b>` + link; both reminder tiers are reset for the new date |
 | ⏰ Reminder (3d) | Event known, `0 < due − now ≤ 72h`, `reminded_3d` not set | `Due in {N} days: …` |
 | ⏰ Reminder (24h) | Event known, `0 < due − now ≤ 24h`, `reminded_24h` not set | `Due in {N} hours: …` |
 | 📢 Announcement | Discussion id not in state, forum type `news` | `<b>{course}</b>: {subject}` + first 300 chars of message (HTML stripped) + link |
@@ -51,6 +52,12 @@ Messages use Telegram HTML parse mode; all user-supplied text is HTML-escaped.
 | ⚠️ Checker failed | Any unhandled exception in the run | `Checker failed: {ExceptionClass}: {message[:200]}` — sent once; suppressed while `failing=true` in state |
 | ✅ Recovered | Run succeeds while `failing=true` | `Checker recovered.` |
 | First run | State file absent | `Checker is live. Tracking {N} course(s).` Seeds state; sends no other alerts |
+
+A course seen for the first time mid-life is seeded silently like a first run:
+only the 🎓 alert (and its deadlines) is sent, not its historical announcements,
+content or grades. Course/category total items are excluded from grade alerts.
+Per-course fetch errors are alerted once per distinct message (keyed per course
+and part, remembered in state) rather than on every run.
 
 Reminder rules:
 - A deadline already past due when first seen gets no reminder.
