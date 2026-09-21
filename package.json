@@ -1,0 +1,8 @@
+{
+  "name": "universitytracker-railway-iac",
+  "private": true,
+  "description": "Dev-only: Railway infrastructure-as-code SDK for .railway/railway.ts (the app itself is Python).",
+  "dependencies": {
+    "railway": "^3.11.0"
+  }
+}

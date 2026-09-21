@@ -92,7 +92,7 @@ unitracker/
 tests/
   test_checker.py, test_formatting.py, test_state.py, test_snapshot.py
   fixtures/*.json  – realistic Moodle API response shapes
-Dockerfile, railway.json, requirements.txt, .env.example, .gitignore, README.md
+Dockerfile, .railway/railway.ts, requirements.txt, .env.example, .gitignore, README.md
 .github/workflows/check.yml  – fallback scheduler
 ```
 

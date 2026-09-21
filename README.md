@@ -42,11 +42,15 @@ Notes on what is and isn't alerted:
 
 ## Deploy on Railway
 
-1. Push this repo to a **private** GitHub repo.
-2. Railway → New Project → Deploy from GitHub repo → pick it. `railway.json` sets the Dockerfile build and cron schedule `0 4,10,17 * * *` (07:00 / 13:00 / 20:00 Cairo during summer DST, UTC+3). In winter (UTC+2) the same local times are `0 5,11,18 * * *`; a one-hour drift is fine if you'd rather not switch.
-3. Service → **Variables**: add `MOODLE_URL`, `MOODLE_USERNAME`, `MOODLE_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. (`STATE_PATH=/data/state.json` is set by the Dockerfile.)
-4. Service → **Volumes** → add a volume mounted at `/data`. Without it, state resets every run and you'd get "Checker is live" three times a day.
-5. Railway cron services run at the next scheduled tick after deploy, not on deploy. To test immediately, run `python -m unitracker` once locally with the same env and confirm the "Checker is live" Telegram message arrives — then delete the local `state.json` so it doesn't diverge from the one on the volume.
+The Railway project (service, cron schedule, restart policy, volume, variables) is defined in `.railway/railway.ts` and applied with the Railway CLI. Secrets are `preserve()`d there — their values live only in Railway, never in the repo.
+
+1. Push this repo to a **private** GitHub repo and create a Railway project from it (Railway → New Project → Deploy from GitHub repo).
+2. One-time local setup: `npm install` (pulls the Railway IaC SDK) and `npm install -g @railway/cli`, then `railway login` and `railway link`.
+3. Set the secrets once (they're not in the repo):
+   `railway variables --set MOODLE_URL=... --set MOODLE_USERNAME=... --set MOODLE_PASSWORD=... --set TELEGRAM_BOT_TOKEN=... --set TELEGRAM_CHAT_ID=...`
+4. Apply the infrastructure: `railway config plan` to preview, `railway config apply` to apply. This sets the Dockerfile build, cron schedule `0 4,10,17 * * *` (07:00 / 13:00 / 20:00 Cairo during summer DST, UTC+3; in winter, UTC+2, the same local times are `0 5,11,18 * * *` — a one-hour drift is fine), restart policy `NEVER`, the `/data` volume, and `STATE_PATH`/`TZ_NAME`.
+   - On Windows Git Bash the SDK's CLI-version check needs the real exe: `RW="$APPDATA/npm/node_modules/@railway/cli/bin/railway.exe"; env _="$RW" "$RW" config apply`
+5. Railway cron services run at the next scheduled tick, not on deploy — `railway status --json` shows `nextCronRunAt`. To test immediately, run `python -m unitracker` once locally with the same env and confirm the "Checker is live" Telegram message arrives — then delete the local `state.json` so it doesn't diverge from the one on the volume.
 
 ## Fallback: GitHub Actions
 
