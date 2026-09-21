@@ -26,7 +26,7 @@ def test_load_optional_overrides():
 
 
 def test_whitespace_only_optionals_fall_back_to_defaults():
-    s = config.load({**FULL, "STATE_PATH": "   ", "TZ_NAME": "	"})
+    s = config.load({**FULL, "STATE_PATH": "   ", "TZ_NAME": "\t"})
     assert s.state_path == "./state.json"
     assert s.tz_name == "Africa/Cairo"
     assert config.load({**FULL, "TZ_NAME": " UTC "}).tz_name == "UTC"
