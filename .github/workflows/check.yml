@@ -1,0 +1,32 @@
+name: moodle-check
+on:
+  schedule:
+    - cron: "0 4,10,17 * * *"
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: moodle-state-${{ github.run_id }}
+          restore-keys: moodle-state-
+      - run: python -m unitracker
+        env:
+          MOODLE_URL: ${{ secrets.MOODLE_URL }}
+          MOODLE_USERNAME: ${{ secrets.MOODLE_USERNAME }}
+          MOODLE_PASSWORD: ${{ secrets.MOODLE_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: moodle-state-${{ github.run_id }}
