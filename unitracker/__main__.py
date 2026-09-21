@@ -19,7 +19,7 @@ def _try_send(sender, token: str, chat_id: str, text: str) -> None:
     try:
         sender(token, chat_id, text)
     except Exception as exc:  # best effort only
-        print(f"telegram send failed: {exc}", file=sys.stderr)
+        print(f"telegram send failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def run(argv=None, *, env=None, now=None, client_factory=None, sender=None) -> int:
@@ -36,29 +36,37 @@ def run(argv=None, *, env=None, now=None, client_factory=None, sender=None) -> i
         src = env if env is not None else os.environ
         tok, chat = src.get("TELEGRAM_BOT_TOKEN"), src.get("TELEGRAM_CHAT_ID")
         if tok and chat:
-            _try_send(sender, tok, chat, "⚠️ Checker misconfigured: missing " + ", ".join(exc.missing))
+            text = "⚠️ Checker misconfigured: missing " + ", ".join(exc.missing)
+            if args.dry_run:
+                print(f"[dry-run] would send: {text}")
+            else:
+                _try_send(sender, tok, chat, text)
         return 2
 
-    state = state_mod.load(settings.state_path)
     now = now if now is not None else int(time.time())
+    state = state_mod.State()
 
     try:
+        state = state_mod.load(settings.state_path)
         client = client_factory(settings.moodle_url)
         client.login(settings.moodle_username, settings.moodle_password)
         userid = int(client.site_info()["userid"])
         snapshot = build_snapshot(client, userid, now)
         alerts, new_state = check(snapshot, state, now)
+        messages = [format_alert(a, settings.tz_name) for a in alerts]
     except Exception as exc:
         traceback.print_exc(file=sys.stderr)
+        text = f"⚠️ Checker failed: {type(exc).__name__}: {str(exc)[:200]}"
         if not state.failing:
-            _try_send(sender, settings.telegram_bot_token, settings.telegram_chat_id,
-                      f"⚠️ Checker failed: {type(exc).__name__}: {str(exc)[:200]}")
+            if args.dry_run:
+                print(f"[dry-run] would send: {text}")
+            else:
+                _try_send(sender, settings.telegram_bot_token, settings.telegram_chat_id, text)
         state.failing = True
         if not args.dry_run:
             state_mod.save(state, settings.state_path)
         return 1
 
-    messages = [format_alert(a, settings.tz_name) for a in alerts]
     if state.failing:
         messages.insert(0, "✅ Checker recovered.")
     new_state.failing = False
@@ -72,6 +80,9 @@ def run(argv=None, *, env=None, now=None, client_factory=None, sender=None) -> i
             sender(settings.telegram_bot_token, settings.telegram_chat_id, text)
     except TelegramError as exc:
         print(f"telegram send failed: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"telegram send failed: {type(exc).__name__}", file=sys.stderr)
         return 1
 
     state_mod.save(new_state, settings.state_path)

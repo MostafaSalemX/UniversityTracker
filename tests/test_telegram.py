@@ -1,4 +1,5 @@
 import pytest
+import requests
 from unitracker.telegram import TelegramError, send_message
 
 
@@ -39,3 +40,16 @@ def test_send_not_ok_payload():
     s = FakeSession(FakeResp(200, {"ok": False, "description": "nope"}))
     with pytest.raises(TelegramError, match="nope"):
         send_message("TOK", "42", "x", session=s)
+
+
+class FakeSessionConnectionError:
+    def post(self, url, json=None, timeout=None):
+        raise requests.ConnectionError("Max retries exceeded with url: /botTOK/sendMessage")
+
+
+def test_send_network_error_sanitizes_token():
+    s = FakeSessionConnectionError()
+    with pytest.raises(TelegramError) as excinfo:
+        send_message("TOK", "42", "x", session=s)
+    assert "TOK" not in str(excinfo.value)
+    assert "<token>" in str(excinfo.value)

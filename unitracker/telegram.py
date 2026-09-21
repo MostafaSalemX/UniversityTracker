@@ -10,11 +10,14 @@ class TelegramError(Exception):
 
 def send_message(token: str, chat_id: str, text: str, session=None) -> None:
     session = session or requests.Session()
-    resp = session.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
-        timeout=30,
-    )
+    try:
+        resp = session.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        raise TelegramError(f"{type(exc).__name__}: {str(exc).replace(token, '<token>')}") from None
     try:
         payload = resp.json()
     except ValueError:

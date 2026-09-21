@@ -126,3 +126,54 @@ def test_telegram_failure_does_not_save_state(tmp_path, capsys):
     assert run([], env=env, now=NOW, client_factory=FakeClient, sender=bad_sender) == 1
     assert not (tmp_path / "state.json").exists()
     assert "chat not found" in capsys.readouterr().err
+
+
+def test_dry_run_failure_does_not_send(tmp_path, capsys):
+    env = env_with_state(tmp_path)
+    FakeClient.fail_login = True
+    sent = Sent()
+    try:
+        assert run(["--dry-run"], env=env, now=NOW, client_factory=FakeClient, sender=sent) == 1
+        assert sent == []
+        assert "[dry-run] would send: ⚠️ Checker failed" in capsys.readouterr().out
+        assert not (tmp_path / "state.json").exists()
+    finally:
+        FakeClient.fail_login = False
+
+
+def test_dry_run_config_error_does_not_send(tmp_path, capsys):
+    sent = Sent()
+    env = {k: v for k, v in ENV.items() if k != "MOODLE_PASSWORD"}
+    assert run(["--dry-run"], env=env, now=NOW, client_factory=FakeClient, sender=sent) == 2
+    assert sent == []
+    assert "misconfigured" in capsys.readouterr().out
+
+
+def test_corrupt_state_file_alerts_and_sets_failing(tmp_path, capsys):
+    FakeClient.fail_login = False
+    env = env_with_state(tmp_path)
+    (tmp_path / "state.json").write_text("{not json")
+    sent = Sent()
+    assert run([], env=env, now=NOW, client_factory=FakeClient, sender=sent) == 1
+    assert len(sent) == 1 and sent[0][2].startswith("⚠️ Checker failed: JSONDecodeError")
+    raw = json.loads((tmp_path / "state.json").read_text())
+    assert raw["failing"] is True
+
+
+def test_bad_timezone_alerts(tmp_path, capsys):
+    # format_alert only touches the timezone for deadline/reminder alerts, and those
+    # are only emitted once state is already initialized (see checker.check: `not first`).
+    # So first establish state normally, then trigger a new deadline on a second run
+    # with a bad TZ_NAME to exercise format_alert's ZoneInfo lookup inside the try block.
+    FakeClient.fail_login = False
+    env = env_with_state(tmp_path)
+    run([], env=env, now=NOW, client_factory=FakeClient, sender=Sent())
+
+    class ClientWithEvent(FakeClient):
+        def upcoming_events(self, timesortfrom, limitnum=50):
+            return fx.EVENTS
+
+    bad_env = {**env, "TZ_NAME": "Mars/Olympus"}
+    sent = Sent()
+    assert run([], env=bad_env, now=NOW, client_factory=ClientWithEvent, sender=sent) == 1
+    assert len(sent) == 1 and sent[0][2].startswith("⚠️ Checker failed: ZoneInfoNotFoundError")
