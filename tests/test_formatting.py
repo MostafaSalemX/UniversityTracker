@@ -1,5 +1,5 @@
 from unitracker.checker import Alert
-from unitracker.formatting import format_alert, format_due, format_remaining, strip_html
+from unitracker.formatting import MAX_LEN, format_alert, format_due, format_remaining, strip_html, truncate
 
 TZ = "Africa/Cairo"
 
@@ -13,6 +13,13 @@ def test_strip_html_separates_block_elements():
     assert strip_html("<ul><li>Item one</li><li>Item two</li></ul>") == "Item one Item two"
     assert strip_html("Before<br/>After") == "Before After"
     assert strip_html("x<b>y</b>z") == "xyz"
+
+
+def test_strip_html_drops_comments_style_and_script():
+    assert strip_html("a<!-- hidden <b>note</b> -->b") == "ab"
+    assert strip_html("<style type='text/css'>p { color: red }</style><p>Hi</p>") == "Hi"
+    assert strip_html("<p>Hi</p><SCRIPT>alert('x')</SCRIPT >bye") == "Hi bye"
+    assert strip_html("<style>\n.a{}\n</style>x<script>\nif (a<b) {}\n</script>y") == "xy"
 
 
 def test_format_due_in_cairo():
@@ -69,4 +76,20 @@ def test_new_content_grade_error():
 
 def test_hard_cap_4000():
     a = Alert(kind="new_content", course="C", items=[("n" * 100, "resource")] * 100)
-    assert len(format_alert(a, TZ)) <= 4000
+    out = format_alert(a, TZ)
+    assert len(out) <= 4000
+    assert out.endswith("(resource)\n…")  # cut on a line break, not mid-bullet
+
+
+def test_truncate_prefers_line_break_near_cap():
+    lines = "\n".join(f"line {i:04d} " + "x" * 50 for i in range(200))
+    out = truncate(lines)
+    assert len(out) <= MAX_LEN and out.endswith("\n…")
+    assert out[:-2] == lines[: len(out) - 2] and lines[len(out) - 2] == "\n"  # a whole-line prefix
+
+
+def test_truncate_hard_cuts_when_no_newline_near_cap():
+    text = "head\n" + "y" * 5000
+    out = truncate(text)
+    assert out == text[: MAX_LEN - 1] + "…" and len(out) == MAX_LEN
+    assert truncate("short") == "short"

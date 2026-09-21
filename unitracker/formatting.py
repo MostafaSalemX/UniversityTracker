@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 from .checker import Alert
 
 MAX_LEN = 4000
+TAIL = 500  # how far back from the cap we look for a newline to truncate on
+_INVISIBLE = re.compile(r"<!--.*?-->|<(style|script)\b.*?</\1\s*>", re.S | re.I)
 _TAG = re.compile(r"</?\s*([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>")
 _WS = re.compile(r"\s+")
 _BLOCK_TAGS = {
@@ -24,7 +26,20 @@ def _tag_repl(m: re.Match) -> str:
 
 
 def strip_html(s: str) -> str:
+    s = _INVISIBLE.sub("", s)
     return _WS.sub(" ", html.unescape(_TAG.sub(_tag_repl, s))).strip()
+
+
+def truncate(text: str) -> str:
+    """Cap at MAX_LEN, cutting on a line break when one is near the cap so a
+    bullet list isn't chopped mid-item."""
+    if len(text) <= MAX_LEN:
+        return text
+    head = text[: MAX_LEN - 1]
+    cut = head.rfind("\n")
+    if cut >= len(head) - TAIL:
+        return head[:cut] + "\n…"
+    return head + "…"
 
 
 def format_due(ts: int, tz_name: str) -> str:
@@ -81,6 +96,4 @@ def format_alert(a: Alert, tz_name: str) -> str:
         text = f"⚠️ Problem checking a course: {e(a.body)}"
     else:
         text = e(f"{a.kind}: {a.title} {a.body}")
-    if len(text) > MAX_LEN:
-        text = text[: MAX_LEN - 1] + "…"
-    return text
+    return truncate(text)
