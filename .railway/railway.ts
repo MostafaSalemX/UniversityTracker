@@ -28,6 +28,8 @@ export default defineRailway(() => {
       MOODLE_URL: preserve(),
       MOODLE_USERNAME: preserve(),
       MOODLE_PASSWORD: preserve(),
+      TELEGRAM_BOT_TOKEN: preserve(),
+      TELEGRAM_CHAT_ID: preserve(),
       STATE_PATH: "/data/state.json",
       TZ_NAME: "Africa/Cairo",
     },
