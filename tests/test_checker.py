@@ -196,9 +196,33 @@ def test_alert_ordering():
     snap.discussions.append(Discussion(702, "M140", "Hi", "", ""))
     snap.modules.append(Module(9006, "M140", "Quiz 1", "quiz", ""))
     snap.grades.append(Grade(402, "M140", "Quiz 1", 9.0, "9.00", 10.0))
+    snap.discussions.append(Discussion(703, "TM112", "Hi again", "", ""))
+    snap.modules.append(Module(9007, "TM112", "TMA02", "assign", ""))
+    snap.grades[0] = Grade(401, "TM112", "TMA01", 90.0, "90.00", 100.0)
     s = seeded_state()
     alerts, _ = check(snap, s, NOW + 10 * 86400 - 3600)  # also triggers 24h reminder for 501
+    # M140 is new: its announcement/content/grade are seeded silently, its deadline is announced
     assert kinds(alerts) == ["course_error", "new_course", "new_deadline", "reminder", "announcement", "new_content", "grade"]
+    assert [a.course for a in alerts[1:]] == ["M140", "M140", "TM112", "TM112", "TM112", "TM112"]
+
+
+def test_new_course_seeds_its_history_silently():
+    snap = base_snapshot()
+    snap.courses.append(Course(102, "M140", "Stats"))
+    snap.events.append(Event(502, "Quiz 1 closes", "M140", NOW + 5 * 86400, ""))
+    snap.discussions.append(Discussion(702, "M140", "Old news", "<p>x</p>", ""))
+    snap.modules.append(Module(9006, "M140", "Quiz 1", "quiz", ""))
+    snap.grades.append(Grade(402, "M140", "Quiz 1", 9.0, "9.00", 10.0))
+    alerts, s = check(snap, seeded_state(), NOW)
+    assert kinds(alerts) == ["new_course", "new_deadline"]
+    assert s.courses["102"] == "M140"
+    assert "702" in s.discussions and "9006" in s.modules and s.grades["402"] == "9.0"
+    # once seeded, the same snapshot is quiet and genuinely new items do alert
+    alerts, s = check(snap, s, NOW)
+    assert alerts == []
+    snap.discussions.append(Discussion(703, "M140", "Fresh", "", ""))
+    alerts, _ = check(snap, s, NOW)
+    assert kinds(alerts) == ["announcement"]
 
 
 def test_failing_flag_untouched():

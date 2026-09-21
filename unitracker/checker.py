@@ -34,12 +34,18 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
         alerts.append(Alert(kind="live", count=len(snapshot.courses)))
     alerts += [Alert(kind="course_error", body=msg) for msg in snapshot.errors]
 
-    # Courses
+    # Courses. A course seen for the first time gets one "enrolled" alert; its
+    # existing announcements/content/grades are seeded silently (like a first
+    # run) rather than dumped as history. Deadlines are still announced.
+    new_courses = {c.shortname for c in snapshot.courses if str(c.id) not in s.courses}
     for c in snapshot.courses:
         key = str(c.id)
         if key not in s.courses and not first:
             alerts.append(Alert(kind="new_course", course=c.shortname, title=c.fullname))
         s.courses[key] = c.shortname
+
+    def seeding(course_shortname: str) -> bool:
+        return first or course_shortname in new_courses
 
     # Deadlines + reminders
     new_deadlines: list[Alert] = []
@@ -73,7 +79,7 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
     # Announcements
     for d in snapshot.discussions:
         key = str(d.id)
-        if key not in s.discussions and not first:
+        if key not in s.discussions and not seeding(d.course_shortname):
             alerts.append(Alert(kind="announcement", course=d.course_shortname, title=d.subject, body=d.message_html, url=d.url))
         s.discussions.add(key)
 
@@ -81,7 +87,7 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
     grouped: dict[str, list[tuple[str, str]]] = {}
     for m in snapshot.modules:
         key = str(m.id)
-        if key not in s.modules and not first:
+        if key not in s.modules and not seeding(m.course_shortname):
             grouped.setdefault(m.course_shortname, []).append((m.name, m.modname))
         s.modules.add(key)
     alerts += [Alert(kind="new_content", course=course, items=items) for course, items in grouped.items()]
@@ -91,7 +97,7 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
         if g.graderaw is None:
             continue
         key, val = str(g.item_id), str(g.graderaw)
-        if s.grades.get(key) != val and not first:
+        if s.grades.get(key) != val and not seeding(g.course_shortname):
             alerts.append(Alert(kind="grade", course=g.course_shortname, title=g.itemname, body=g.gradeformatted))
         s.grades[key] = val
 
