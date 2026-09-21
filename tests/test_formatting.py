@@ -8,6 +8,13 @@ def test_strip_html():
     assert strip_html("<p>Hello <b>all</b>&amp; friends</p>\n<br>bye") == "Hello all& friends bye"
 
 
+def test_strip_html_separates_block_elements():
+    assert strip_html("<p>Line one</p><p>Line two</p>") == "Line one Line two"
+    assert strip_html("<ul><li>Item one</li><li>Item two</li></ul>") == "Item one Item two"
+    assert strip_html("Before<br/>After") == "Before After"
+    assert strip_html("x<b>y</b>z") == "xyz"
+
+
 def test_format_due_in_cairo():
     # 2026-10-01 21:59 UTC == 2026-10-02 00:59 Cairo (UTC+3, DST)
     assert format_due(1790891940, TZ) == "Fri 2 Oct, 00:59"

@@ -10,12 +10,21 @@ from zoneinfo import ZoneInfo
 from .checker import Alert
 
 MAX_LEN = 4000
-_TAG = re.compile(r"<[^>]+>")
+_TAG = re.compile(r"</?\s*([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>")
 _WS = re.compile(r"\s+")
+_BLOCK_TAGS = {
+    "p", "div", "br", "li", "ul", "ol",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "tr", "td", "th", "table", "blockquote", "pre", "hr",
+}
+
+
+def _tag_repl(m: re.Match) -> str:
+    return " " if m.group(1).lower() in _BLOCK_TAGS else ""
 
 
 def strip_html(s: str) -> str:
-    return _WS.sub(" ", html.unescape(_TAG.sub("", s))).strip()
+    return _WS.sub(" ", html.unescape(_TAG.sub(_tag_repl, s))).strip()
 
 
 def format_due(ts: int, tz_name: str) -> str:
