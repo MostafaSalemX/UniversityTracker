@@ -1,6 +1,7 @@
 """Fetch everything we care about from Moodle into plain dataclasses."""
 from __future__ import annotations
 
+import html
 from dataclasses import dataclass, field
 
 from .moodle import MoodleClient, MoodleError
@@ -60,11 +61,21 @@ class Snapshot:
     errors: dict[str, str] = field(default_factory=dict)  # "forums" | "<shortname>/<part>" -> message
 
 
+def _text(value) -> str:
+    """Moodle entity-escapes display strings (names, subjects, grades) before
+    returning them; undo that here so formatting escapes exactly once."""
+    return html.unescape(str(value)) if value else ""
+
+
+def _num(value) -> float | None:
+    return None if value is None else float(value)
+
+
 def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
     snap = Snapshot()
 
     snap.courses = [
-        Course(int(c["id"]), c.get("shortname", ""), c.get("fullname", ""))
+        Course(int(c["id"]), _text(c.get("shortname")), _text(c.get("fullname")))
         for c in client.courses(userid)
     ]
     names = {c.id: c.shortname for c in snap.courses}
@@ -72,8 +83,8 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
     snap.events = [
         Event(
             int(e["id"]),
-            e.get("name", ""),
-            (e.get("course") or {}).get("shortname", ""),
+            _text(e.get("name")),
+            _text((e.get("course") or {}).get("shortname")),
             int(e["timesort"]),
             e.get("url", ""),
         )
@@ -99,8 +110,8 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
                         Discussion(
                             did,
                             course.shortname,
-                            d.get("subject", ""),
-                            d.get("message", "") or "",
+                            _text(d.get("subject")),
+                            d.get("message") or "",  # raw HTML; strip_html unescapes it
                             f"{client.base_url}/mod/forum/discuss.php?d={did}",
                         )
                     )
@@ -112,7 +123,7 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
                     if m.get("uservisible") is False:
                         continue
                     snap.modules.append(
-                        Module(int(m["id"]), course.shortname, m.get("name", ""), m.get("modname", ""), m.get("url") or "")
+                        Module(int(m["id"]), course.shortname, _text(m.get("name")), m.get("modname", ""), m.get("url") or "")
                     )
         except MoodleError as exc:
             snap.errors[f"{course.shortname}/contents"] = f"{course.shortname} contents: {exc}"
@@ -124,10 +135,10 @@ def build_snapshot(client: MoodleClient, userid: int, now: int) -> Snapshot:
                     Grade(
                         int(g["id"]),
                         course.shortname,
-                        g.get("itemname") or "",
-                        g.get("graderaw"),
-                        str(g.get("gradeformatted") or ""),
-                        g.get("grademax"),
+                        _text(g.get("itemname")),
+                        _num(g.get("graderaw")),
+                        _text(g.get("gradeformatted")),
+                        _num(g.get("grademax")),
                     )
                 )
         except MoodleError as exc:

@@ -1,4 +1,6 @@
 from tests import fixtures as fx
+from unitracker.formatting import format_alert
+from unitracker.checker import Alert
 from unitracker.moodle import MoodleApiError
 from unitracker.snapshot import Course, Discussion, Event, Grade, Module, build_snapshot
 
@@ -94,3 +96,37 @@ def test_no_courses_is_fine():
 
     snap = build_snapshot(Empty(), userid=1, now=0)
     assert snap.courses == [] and snap.events == [] and snap.errors == {}
+
+
+def test_moodle_entities_are_unescaped_once():
+    class Escaped(FakeClient):
+        def courses(self, userid):
+            return [{"id": 101, "shortname": "TM112", "fullname": "Maths &amp; Stats &lt;2026&gt;"}]
+
+        def upcoming_events(self, timesortfrom, limitnum=50):
+            return [fx.event(501, "TMA01 &quot;draft&quot; is due", 1_760_000_000)]
+
+        def discussions(self, forum_id):
+            return [fx.discussion(701, "Room &amp; time", message="<p>A &amp;amp; B</p>")]
+
+        def course_contents(self, course_id):
+            return [{"id": 1, "modules": [{"id": 9002, "name": "Q &amp; A", "modname": "forum", "uservisible": True}]}]
+
+        def grade_items(self, course_id, userid):
+            return [{"id": 401, "itemname": "TMA &amp; co", "itemtype": "mod", "graderaw": 85, "gradeformatted": "85 &#37;", "grademax": 100}]
+
+    snap = build_snapshot(Escaped(), userid=1, now=0)
+    assert snap.courses[0].fullname == "Maths & Stats <2026>"
+    assert snap.events[0].name == 'TMA01 "draft" is due'
+    assert snap.discussions[0].subject == "Room & time"
+    assert snap.discussions[0].message_html == "<p>A &amp;amp; B</p>"  # raw HTML kept
+    assert snap.modules[0].name == "Q & A"
+    assert snap.grades[0] == Grade(401, "TM112", "TMA & co", 85.0, "85 %", 100.0)
+    assert isinstance(snap.grades[0].graderaw, float)
+
+    out = format_alert(Alert(kind="new_course", course="TM112", title=snap.courses[0].fullname), "UTC")
+    assert out == "🎓 Enrolled in <b>Maths &amp; Stats &lt;2026&gt;</b> (TM112)"
+    out = format_alert(Alert(kind="announcement", course="TM112", title=snap.discussions[0].subject, body=snap.discussions[0].message_html), "UTC")
+    assert out == "📢 <b>TM112</b>: Room &amp; time\nA &amp;amp; B"
+    out = format_alert(Alert(kind="grade", course="TM112", title=snap.grades[0].itemname, body=snap.grades[0].gradeformatted), "UTC")
+    assert out == "📊 <b>TM112</b> — TMA &amp; co: <b>85 %</b>"
