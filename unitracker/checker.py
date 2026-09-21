@@ -55,6 +55,7 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
 
     # Deadlines + reminders
     new_deadlines: list[Alert] = []
+    changed_deadlines: list[Alert] = []
     reminders: list[Alert] = []
     for e in snapshot.events:
         key = str(e.id)
@@ -70,7 +71,11 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
                 new_deadlines.append(Alert(kind="new_deadline", course=e.course_shortname, title=e.name, url=e.url, due=e.due))
             continue
         es = s.events[key]
-        es.due = e.due
+        if e.due != es.due:
+            # Due date moved: announce it and re-arm the reminder tiers for the new date.
+            es.due = e.due
+            es.reminded_3d = es.reminded_24h = False
+            changed_deadlines.append(Alert(kind="deadline_changed", course=e.course_shortname, title=e.name, url=e.url, due=e.due))
         if 0 < remaining <= H24 and not es.reminded_24h:
             es.reminded_24h = True
             es.reminded_3d = True
@@ -80,7 +85,7 @@ def check(snapshot: Snapshot, state: State, now: int) -> tuple[list[Alert], Stat
             reminders.append(Alert(kind="reminder", course=e.course_shortname, title=e.name, url=e.url, due=e.due, remaining=remaining))
     for key in [k for k, es in s.events.items() if es.due < now - PRUNE_AFTER]:
         del s.events[key]
-    alerts += new_deadlines + reminders
+    alerts += new_deadlines + changed_deadlines + reminders
 
     # Announcements
     for d in snapshot.discussions:

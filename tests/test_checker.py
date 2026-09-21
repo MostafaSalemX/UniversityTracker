@@ -126,8 +126,43 @@ def test_due_date_change_is_tracked():
     s = seeded_state()
     snap = base_snapshot()
     snap.events[0] = Event(501, "TMA01 is due", "TM112", NOW + 20 * 86400, "https://lms/a")
-    _, s = check(snap, s, NOW)
-    assert s.events["501"].due == NOW + 20 * 86400
+    alerts, s = check(snap, s, NOW)
+    assert alerts == [Alert(kind="deadline_changed", course="TM112", title="TMA01 is due", url="https://lms/a", due=NOW + 20 * 86400)]
+    assert s.events["501"] == EventState(due=NOW + 20 * 86400)
+    alerts, _ = check(snap, s, NOW + 60)  # unchanged afterwards: quiet
+    assert alerts == []
+
+
+def test_due_date_extension_rearms_reminders():
+    s = seeded_state()
+    due = NOW + 10 * 86400
+    alerts, s = check(base_snapshot(), s, due - 60 * 3600)  # 3d reminder fires
+    assert kinds(alerts) == ["reminder"] and s.events["501"].reminded_3d
+    snap = base_snapshot()
+    snap.events[0] = Event(501, "TMA01 is due", "TM112", due + 7 * 86400, "https://lms/a")
+    alerts, s = check(snap, s, due - 59 * 3600)
+    assert kinds(alerts) == ["deadline_changed"]
+    assert s.events["501"] == EventState(due=due + 7 * 86400, reminded_3d=False, reminded_24h=False)
+    alerts, s = check(snap, s, due - 58 * 3600)  # nothing new to say
+    assert alerts == []
+    alerts, s = check(snap, s, due + 7 * 86400 - 60 * 3600)  # 3d reminder for the new date
+    assert kinds(alerts) == ["reminder"] and alerts[0].due == due + 7 * 86400
+
+
+def test_due_date_moved_into_24h_window_fires_one_reminder():
+    s = seeded_state()
+    due = NOW + 10 * 86400
+    _, s = check(base_snapshot(), s, due - 60 * 3600)  # 3d fired for the old date
+    t = due - 59 * 3600
+    new_due = t + 5 * 3600
+    snap = base_snapshot()
+    snap.events[0] = Event(501, "TMA01 is due", "TM112", new_due, "https://lms/a")
+    alerts, s = check(snap, s, t)
+    assert kinds(alerts) == ["deadline_changed", "reminder"]
+    assert alerts[1].remaining == 5 * 3600
+    assert s.events["501"] == EventState(due=new_due, reminded_3d=True, reminded_24h=True)
+    alerts, _ = check(snap, s, t + 60)
+    assert alerts == []
 
 
 def test_old_events_are_pruned():
@@ -212,6 +247,7 @@ def test_alert_ordering():
     snap.errors = {"forums": "x"}
     snap.courses.append(Course(102, "M140", "Stats"))
     snap.events.append(Event(502, "Quiz 1 closes", "M140", NOW + 5 * 86400, ""))
+    snap.events.append(Event(503, "Moved", "TM112", NOW + 30 * 86400, ""))
     snap.discussions.append(Discussion(702, "M140", "Hi", "", ""))
     snap.modules.append(Module(9006, "M140", "Quiz 1", "quiz", ""))
     snap.grades.append(Grade(402, "M140", "Quiz 1", 9.0, "9.00", 10.0))
@@ -219,10 +255,11 @@ def test_alert_ordering():
     snap.modules.append(Module(9007, "TM112", "TMA02", "assign", ""))
     snap.grades[0] = Grade(401, "TM112", "TMA01", 90.0, "90.00", 100.0)
     s = seeded_state()
+    s.events["503"] = EventState(due=NOW + 25 * 86400)
     alerts, _ = check(snap, s, NOW + 10 * 86400 - 3600)  # also triggers 24h reminder for 501
     # M140 is new: its announcement/content/grade are seeded silently, its deadline is announced
-    assert kinds(alerts) == ["course_error", "new_course", "new_deadline", "reminder", "announcement", "new_content", "grade"]
-    assert [a.course for a in alerts[1:]] == ["M140", "M140", "TM112", "TM112", "TM112", "TM112"]
+    assert kinds(alerts) == ["course_error", "new_course", "new_deadline", "deadline_changed", "reminder", "announcement", "new_content", "grade"]
+    assert [a.course for a in alerts[1:]] == ["M140", "M140", "TM112", "TM112", "TM112", "TM112", "TM112"]
 
 
 def test_new_course_seeds_its_history_silently():

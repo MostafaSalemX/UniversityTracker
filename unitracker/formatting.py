@@ -44,16 +44,26 @@ def _link(url: str) -> str:
     return f'\n<a href="{html.escape(url, quote=True)}">Open</a>' if url else ""
 
 
+def _course(shortname: str) -> str:
+    return f" ({html.escape(shortname)})" if shortname else ""
+
+
+def _deadline(head: str, a: Alert, tz_name: str) -> str:
+    return f"{head}\n<b>{html.escape(a.title)}</b>{_course(a.course)}\nDue <b>{format_due(a.due, tz_name)}</b>{_link(a.url)}"
+
+
 def format_alert(a: Alert, tz_name: str) -> str:
     e = html.escape
     if a.kind == "live":
         text = f"✅ Checker is live. Tracking {a.count} course(s)."
     elif a.kind == "new_course":
-        text = f"🎓 Enrolled in <b>{e(a.title)}</b> ({e(a.course)})"
+        text = f"🎓 Enrolled in <b>{e(a.title)}</b>{_course(a.course)}"
     elif a.kind == "new_deadline":
-        text = f"📌 New deadline\n<b>{e(a.title)}</b> ({e(a.course)})\nDue <b>{format_due(a.due, tz_name)}</b>{_link(a.url)}"
+        text = _deadline("📌 New deadline", a, tz_name)
+    elif a.kind == "deadline_changed":
+        text = _deadline("📌 Deadline changed", a, tz_name)
     elif a.kind == "reminder":
-        text = f"⏰ Due {format_remaining(a.remaining)}\n<b>{e(a.title)}</b> ({e(a.course)})\nDue <b>{format_due(a.due, tz_name)}</b>{_link(a.url)}"
+        text = _deadline(f"⏰ Due {format_remaining(a.remaining)}", a, tz_name)
     elif a.kind == "announcement":
         body = strip_html(a.body)
         if len(body) > 300:

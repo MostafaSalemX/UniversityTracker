@@ -39,6 +39,16 @@ def test_new_deadline_and_reminder():
     assert format_alert(a, "UTC") == '📌 New deadline\n<b>TMA01 is due</b> (TM112)\nDue <b>Thu 1 Oct, 21:59</b>\n<a href="https://lms/a">Open</a>'
     r = Alert(kind="reminder", course="TM112", title="TMA01 is due", url="", due=1790891940, remaining=5 * 3600)
     assert format_alert(r, "UTC") == "⏰ Due in 5 hours\n<b>TMA01 is due</b> (TM112)\nDue <b>Thu 1 Oct, 21:59</b>"
+    c = Alert(kind="deadline_changed", course="TM<1>", title="TMA01 is due", url="https://lms/a?x=1&y=2", due=1790891940)
+    assert format_alert(c, "UTC") == '📌 Deadline changed\n<b>TMA01 is due</b> (TM&lt;1&gt;)\nDue <b>Thu 1 Oct, 21:59</b>\n<a href="https://lms/a?x=1&amp;y=2">Open</a>'
+
+
+def test_empty_course_omits_parenthetical():
+    a = Alert(kind="new_deadline", course="", title="Site event", url="", due=1790891940)
+    assert format_alert(a, "UTC") == "📌 New deadline\n<b>Site event</b>\nDue <b>Thu 1 Oct, 21:59</b>"
+    assert format_alert(Alert(kind="new_course", course="", title="X"), "UTC") == "🎓 Enrolled in <b>X</b>"
+    r = Alert(kind="reminder", course="", title="Site event", url="", due=1790891940, remaining=3600)
+    assert format_alert(r, "UTC") == "⏰ Due in 1 hour\n<b>Site event</b>\nDue <b>Thu 1 Oct, 21:59</b>"
 
 
 def test_announcement_truncates_and_escapes():
