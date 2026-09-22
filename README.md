@@ -21,8 +21,8 @@ alerts start from the second run. Likewise, when a new course appears you get
 one "Enrolled in ..." message (plus its deadlines); its existing announcements,
 content and grades are recorded silently rather than dumped as history.
 
-Do not run real (non-`--dry-run`) local runs while Railway or Actions is also
-running: two state files diverge and you get every alert twice.
+Do not run real (non-`--dry-run`) local runs while Actions is also running:
+two state files diverge and you get every alert twice.
 
 Notes on what is and isn't alerted:
 
@@ -40,7 +40,32 @@ Notes on what is and isn't alerted:
 2. Open a chat with your new bot and send it any message (e.g. "hi").
 3. Visit `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser; find `"chat":{"id":123456789` → `TELEGRAM_CHAT_ID`.
 
-## Deploy on Railway
+## Where it runs
+
+**GitHub Actions is the runner.** Railway is parked: AOU's Cloudflare answers
+`403 Sorry, you have been blocked` to every request from Railway's address
+space — any User-Agent, any HTTP method, even a plain `GET /` — so a checker
+running there cannot reach the site at all. The same code reaches Moodle fine
+from a laptop and from an Actions runner, so this is Cloudflare judging the
+caller's IP, not the request.
+
+### GitHub Actions
+
+`.github/workflows/check.yml` runs `0 4,10,17 * * *`. Add the five variables as
+repository **Secrets** (`gh secret set MOODLE_URL`, ...) and enable Actions.
+State lives in the Actions cache, keyed `moodle-state-<run id>` and restored by
+the `moodle-state-` prefix.
+
+Caveats: GitHub disables scheduled workflows after 60 days without repository
+activity (a commit or a manual run re-enables them), and schedule ticks are
+frequently delayed 10-30+ minutes under load. Run one manually at any time with
+`gh workflow run moodle-check`.
+
+If a runner ever lands on an address Cloudflare also blocks, the "⚠️ Checker
+failed" message will say so directly: `MoodleHttpError` carries the status plus
+`Server`/`CF-Ray`/`CF-Mitigated`/`Retry-After` and a snippet of the body.
+
+### Railway (parked)
 
 The Railway project (service, cron schedule, restart policy, volume, variables) is defined in `.railway/railway.ts` and applied with the Railway CLI. Secrets are `preserve()`d there — their values live only in Railway, never in the repo.
 
@@ -50,16 +75,20 @@ The Railway project (service, cron schedule, restart policy, volume, variables) 
    `railway variables --set MOODLE_URL=... --set MOODLE_USERNAME=... --set MOODLE_PASSWORD=... --set TELEGRAM_BOT_TOKEN=... --set TELEGRAM_CHAT_ID=...`
 4. Apply the infrastructure: `railway config plan` to preview, `railway config apply` to apply. This sets the Dockerfile build, cron schedule `0 4,10,17 * * *` (07:00 / 13:00 / 20:00 Cairo during summer DST, UTC+3; in winter, UTC+2, the same local times are `0 5,11,18 * * *` — a one-hour drift is fine), restart policy `NEVER`, the `/data` volume, and `STATE_PATH`/`TZ_NAME`.
    - On Windows Git Bash the SDK's CLI-version check needs the real exe: `RW="$APPDATA/npm/node_modules/@railway/cli/bin/railway.exe"; env _="$RW" "$RW" config apply`
-5. Railway cron services run at the next scheduled tick, not on deploy — `railway status --json` shows `nextCronRunAt`. To test immediately, run `python -m unitracker` once locally with the same env and confirm the "Checker is live" Telegram message arrives — then delete the local `state.json` so it doesn't diverge from the one on the volume.
+5. Railway cron services run at the next scheduled tick, not on deploy — `railway status --json` shows `nextCronRunAt`. Neither `railway redeploy` nor a push to `main` runs the job; it only rebuilds. To test immediately, run `python -m unitracker` once locally with the same env and confirm the "Checker is live" Telegram message arrives — then delete the local `state.json` so it doesn't diverge from the one on the volume.
 
-## Fallback: GitHub Actions
+The schedule is currently `0 0 31 2 *` — 31 February never comes, so the job
+never fires. Restore `0 4,10,17 * * *` in `.railway/railway.ts` and
+`railway config apply` to re-arm it, but only if AOU's Cloudflare stops
+blocking Railway. To check whether it still does, without redeploying:
 
-`.github/workflows/check.yml` runs the same schedule. Add the five variables as
-repository **Secrets** and enable Actions. State is kept in the Actions cache.
+    railway sandbox create --idle-timeout-minutes 10
+    railway sandbox exec -- curl -s -o /dev/null -w '%{http_code}\n' https://egylms.arabou.edu.kw/
+    railway sandbox destroy <id>
 
-Caveats: GitHub disables scheduled workflows after 60 days without repository
-activity (a commit or a manual run re-enables them), and schedule ticks are
-frequently delayed 10–30+ minutes under load.
+`403` means still blocked. If it ever returns `200`, re-arm Railway *and* drop
+the Actions schedule in the same change — two runners keep separate state files
+and would each alert, so every message would arrive twice.
 
 ## Files
 

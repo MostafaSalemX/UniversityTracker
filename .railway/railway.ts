@@ -16,8 +16,12 @@ export default defineRailway(() => {
     source: github("MostafaSalemX/UniversityTracker", { branch: "main", checkSuites: false }),
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     deploy: {
-      // 07:00 / 13:00 / 20:00 Africa/Cairo while on summer time (UTC+3).
-      cronSchedule: "0 4,10,17 * * *",
+      // Parked. AOU's Cloudflare answers 403 "Sorry, you have been blocked" to
+      // every request from Railway's address space — any User-Agent, any method,
+      // even GET / — so this service cannot reach the site. GitHub Actions
+      // (.github/workflows/check.yml) runs the checks instead. 31 February never
+      // comes, so the job never fires; restore "0 4,10,17 * * *" to re-arm it.
+      cronSchedule: "0 0 31 2 *",
       // A cron job must exit; never restart it.
       restartPolicyType: "NEVER",
     },

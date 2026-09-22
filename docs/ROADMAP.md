@@ -18,7 +18,7 @@ Two hard limits found by probing:
 
 | Version | State | What it does |
 |---|---|---|
-| v1 | **Deployed** (Railway, 3×/day) | enrolments, deadlines (+changes, 3d/24h reminders), announcements, new content, grades, failure/recovery alerts |
+| v1 | **Deployed** (GitHub Actions, 3×/day; Railway parked — Cloudflare blocks its IPs) | enrolments, deadlines (+changes, 3d/24h reminders), announcements, new content, grades, failure/recovery alerts |
 | v2 | **Planned** — `docs/superpowers/plans/2026-09-21-v2-sessions-submissions-notifications.md` | submission-aware deadlines (reminders stop once submitted), 🔴 BigBlueButton live-session alerts, 🔔 notifications, every 10 minutes |
 
 ## Candidate improvements (after v2)
