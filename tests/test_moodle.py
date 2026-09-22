@@ -1,17 +1,17 @@
 import pytest
 import requests
-from unitracker.moodle import MoodleApiError, MoodleAuthError, MoodleClient
+from unitracker.moodle import MoodleApiError, MoodleAuthError, MoodleClient, MoodleHttpError
 
 
 class FakeResp:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200, headers=None, text=""):
         self._p = payload
+        self.status_code = status_code
+        self.headers = requests.structures.CaseInsensitiveDict(headers or {})
+        self.text = text
 
     def json(self):
         return self._p
-
-    def raise_for_status(self):
-        pass
 
 
 class FakeSession:
@@ -20,12 +20,15 @@ class FakeSession:
     def __init__(self, *payloads):
         self.queue = list(payloads)
         self.calls = []
+        self.headers = {}
 
     def post(self, url, data=None, timeout=None):
         self.calls.append((url, dict(data or {})))
         item = self.queue.pop(0)
         if isinstance(item, Exception):
             raise item
+        if isinstance(item, FakeResp):
+            return item
         return FakeResp(item)
 
 
@@ -105,3 +108,35 @@ def test_typed_helpers_unwrap_envelopes():
     assert s.calls[2][1]["forumid"] == 9
     assert c.grade_items(1, 2) == [{"id": 3}]
     assert c.grade_items(1, 2) == []
+
+
+def test_client_sets_an_identifying_user_agent():
+    s = FakeSession()
+    MoodleClient(BASE, session=s)
+    assert "UniversityTracker" in s.headers["User-Agent"]
+
+
+def test_http_error_carries_status_and_edge_diagnostics():
+    blocked = FakeResp(
+        None,
+        status_code=403,
+        headers={"Server": "cloudflare", "cf-ray": "abc123-AMS", "Content-Type": "text/html"},
+        text="<html><title>Attention Required! | Cloudflare</title>\n  error code 1020</html>",
+    )
+    c = MoodleClient(BASE, session=FakeSession(blocked))
+    with pytest.raises(MoodleHttpError) as ei:
+        c.login("u", "p")
+    exc = ei.value
+    assert exc.status == 403
+    assert "cloudflare" in str(exc)
+    assert "abc123-AMS" in str(exc)
+    assert "1020" in str(exc)
+    assert "\n" not in str(exc)
+
+
+def test_http_error_does_not_retry_like_a_connection_error():
+    s = FakeSession(FakeResp(None, status_code=403, text="no"))
+    c = MoodleClient(BASE, session=s)
+    with pytest.raises(MoodleHttpError):
+        c.login("u", "p")
+    assert len(s.calls) == 1

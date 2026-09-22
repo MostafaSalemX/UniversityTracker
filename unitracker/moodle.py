@@ -1,11 +1,17 @@
 """Thin client for Moodle's mobile web-service (REST/JSON) API."""
 from __future__ import annotations
 
+import re
+import sys
 from typing import Any
 
 import requests
 
 SERVICE = "moodle_mobile_app"
+# Identify ourselves honestly: a bare "python-requests/x.y" is what bot filters
+# in front of a Moodle site look for first.
+USER_AGENT = "UniversityTracker/1.0 (+https://github.com/MostafaSalemX/UniversityTracker)"
+DIAGNOSTIC_HEADERS = ("Server", "CF-Ray", "CF-Mitigated", "Retry-After", "Content-Type")
 
 
 class MoodleError(Exception):
@@ -16,10 +22,33 @@ class MoodleAuthError(MoodleError):
     pass
 
 
+class MoodleHttpError(MoodleError):
+    """A non-2xx reply. Usually a proxy or WAF in front of Moodle, not Moodle."""
+
+    def __init__(self, status: int, url: str, detail: str):
+        self.status = status
+        self.url = url
+        self.detail = detail
+        super().__init__(f"HTTP {status} for {url} ({detail})")
+
+
 class MoodleApiError(MoodleError):
     def __init__(self, errorcode: str, message: str):
         self.errorcode = errorcode
         super().__init__(f"{errorcode}: {message}")
+
+
+def _diagnose(resp, limit: int = 160) -> str:
+    """Summarise a rejected reply: who answered, and what they said.
+
+    `raise_for_status()` alone reports only the status code, which cannot tell a
+    WAF block apart from Moodle refusing us.
+    """
+    bits = [f"{h.lower()}={resp.headers[h]}" for h in DIAGNOSTIC_HEADERS if resp.headers.get(h)]
+    body = " ".join(re.sub(r"<[^>]+>", " ", resp.text or "").split())
+    if body:
+        bits.append(f"body={body[:limit]}")
+    return "; ".join(bits) or "no headers or body"
 
 
 def _flatten(params: dict[str, Any]) -> dict[str, Any]:
@@ -38,6 +67,7 @@ class MoodleClient:
     def __init__(self, base_url: str, session=None, timeout: int = 30):
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
+        self.session.headers.update({"User-Agent": USER_AGENT})
         self.timeout = timeout
         self.token: str | None = None
 
@@ -46,7 +76,9 @@ class MoodleClient:
             resp = self.session.post(url, data=data, timeout=self.timeout)
         except requests.ConnectionError:
             resp = self.session.post(url, data=data, timeout=self.timeout)
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            print(f"{url} -> {resp.status_code}; {_diagnose(resp, limit=600)}", file=sys.stderr)
+            raise MoodleHttpError(resp.status_code, url, _diagnose(resp))
         return resp.json()
 
     def login(self, username: str, password: str) -> None:
